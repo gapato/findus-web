@@ -1,0 +1,14 @@
+html { font-family: sans; }
+input { font-size: 100%; border: none; padding: 0.3em; background: #ddf; margin: 0.1em; }
+
+a { text-decoration: none; }
+
+.table { display: table; width: 100%; margin-bottom: 1em; }
+.row { display: table-row; }
+.cell { display: table-cell; }
+.thead { color: #888; }
+
+#form { margin: 1em 0; }
+#main { width: 80%; margin: auto; }
+#json { display: none; font-family: mono; padding: 0.1em; background: white; }
+#result { margin-top: 1em; }

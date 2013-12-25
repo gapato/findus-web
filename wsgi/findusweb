@@ -1,0 +1,23 @@
+#!/usr/bin/env python
+import os
+from flask import Flask, render_template, url_for, abort, request
+from simplejson import loads
+
+from libfindus.ledger import Ledger
+
+app = Flask(__name__)
+app.debug = True
+
+@app.route('/')
+def index():
+    return render_template('index.html')
+
+@app.route('/reduce', methods=['GET', 'POST'])
+def reduce():
+    payments = request.form['p']
+    ledger = Ledger(payments)
+    ledger.reduce()
+    return ledger.summary().replace('\n', '<br>')
+
+if __name__ == '__main__':
+    app.run()

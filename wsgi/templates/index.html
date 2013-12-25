@@ -1,0 +1,36 @@
+{% extends "layout.html" %}
+
+{% block main %}
+<form id="form" action="javascript:commit()">
+    <label for="creditor">
+        <input id="creditor" name="creditor" type="text" placeholder="creditor" required>
+    </label>
+    <label for="amount">
+        <input id="amount" name="amount" type="number" min="0" max="999999999" step="0.01" placeholder="amount" required>
+    </label>
+    <label for="debtors">
+        <input id="debtors" name="debtors" type="text" placeholder="debtors (comma separated)" required>
+    </label>
+    <label for="comment">
+        <input id="comment" name="comment" type="text" placeholder="comment">
+    </label>
+    <input type="submit" value="Add">
+</form>
+
+<div id="payments" class="table">
+    <span class="thead row">
+        <span class="cell">Creditor</span>
+        <span class="cell">Amount</span>
+        <span class="cell">Debtors</span>
+        <span class="cell">Comment</span>
+        <span class="cell"></span>
+    </span>
+</div>
+
+<input type="button" value="Reduce" onclick="reduce()">
+<input type="button" value="Toggle JSON" onclick="$('#json').toggle()">
+
+<div id="json"></div>
+<div id="result"></div>
+
+{% endblock %}
