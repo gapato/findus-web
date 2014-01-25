@@ -1,0 +1,16 @@
+{% for person in ledger %}
+<div class="debt">
+    <div>
+        {% if person['balance'] < 0 %}
+        <i>{{person['name']}}</i> has <i>{{(-person['balance'])|round}}€</i> to pay:
+        <ul>
+        {% for t in person['transfers'] %}
+            <li><i>{{t['amount']|round}}€</i> to <i>{{t['to']}}</i></li>
+        {% endfor %}
+        </ul>
+        {% else %}
+        <i>{{person['name']}}</i> is owed <i>{{person['balance']|round}}€</i>.
+        {% endif %}
+    </div>
+</div>
+{% endfor %}

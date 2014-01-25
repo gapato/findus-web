@@ -1,14 +1,48 @@
-html { font-family: sans; }
-input { font-size: 100%; border: none; padding: 0.3em; background: #ddf; margin: 0.1em; }
+@viewport { width: device-width; zoom: 1; }
+
+html, body { font-family: sans; margin: 0; font-size: 18px; }
+html { padding: 0; }
+body { padding: 0.5em; }
+
+input { box-sizing: border-box; -moz-box-sizing: border-box;
+        font-size: 18px; border: none; padding: 0.3em; background: #ddf;
+        margin-bottom: 0.2em; width: auto; display: inline; }
+
+input.block { display: block; width: 100%; margin: 0; }
+
+input[type=button]:hover { opacity: 0.8; }
 
 a { text-decoration: none; }
 
-.table { display: table; width: 100%; margin-bottom: 1em; }
-.row { display: table-row; }
-.cell { display: table-cell; }
-.thead { color: #888; }
+ul { margin: 0; }
 
-#form { margin: 1em 0; }
-#main { width: 80%; margin: auto; }
+i { color: #222; font-style:normal; }
+
+.center { text-align: center; }
+
+.blue { background: #55F; color: #EEE; }
+.green { background: #5F5; }
+.red { background: #F55; }
+
+.payment { border-bottom: 1px solid #ddd; padding: 0; margin-bottom: 0.1em; }
+
+.infocol, .linkscol { display: inline-block; vertical-align: top; }
+.infocol { width: 90%; color: #777; }
+.linkscol { width: 10%; }
+
+.infocol div { padding: 0.3em; }
+
+.debt { color: #777; padding: 0.3em; }
+
+#form { margin: 1em 0; width: 100%; }
+#main { width: 100%; margin: auto; }
 #json { display: none; font-family: mono; padding: 0.1em; background: white; }
 #result { margin-top: 1em; }
+
+@media (max-width: 800px)
+{ body { padding: 0; }
+  input { width: 100%; display: block; } }
+
+@media (min-resolution: 250dpi) and (max-width: 1200px)
+{ body { padding: 0; }
+  input { width: 100%; display: block; } }

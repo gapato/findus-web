@@ -1,0 +1,11 @@
+{% extends "layout.html" %}
+
+{% block title %}
+Admin
+{% endblock %}
+
+{% block main %}
+{% for l in ledgers %}
+<a href="{{ url_for('viewledger', id=l['id']) }}">{{l['id']}}</a>
+{% endfor %}
+{% endblock %}

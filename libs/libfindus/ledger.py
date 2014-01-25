@@ -9,26 +9,10 @@ class Payment:
         self.creditor = info['creditor']
         self.debtors = info['debtors']
         if len(self.debtors) == 0:
-            error('Payment cannot be made to no one')
+            logger.error('Payment cannot be made to no one')
             raise ValueError
         self.amount = info['amount']
-
-        # debtors that exclude creditor
-        self.effective_debtors = list(self.debtors)
-        for i in range(self.debtors.count(self.creditor)):
-            self.effective_debtors.remove(self.creditor)
-        self.effective_amount = self.amount * (len(self.effective_debtors)/
-                                               len(self.debtors))
-
-    def make_debts(self):
-        discrete_amount = self.effective_amount/len(self.effective_debtors)
-        debts = {}
-        for debtor in self.effective_debtors:
-            debt = debts.get(debtor) or Debt(debtor, self.creditor, 0, self.comment)
-            debt.add(discrete_amount)
-            debts[debtor] = debt
-            logger.debug(debt)
-        return debts
+        self.share = self.amount/len(self.debtors)
 
 class Debt:
 
@@ -38,14 +22,26 @@ class Debt:
         self.amount = amount
         self.comment = comment
 
-    def add(self, amount):
-        self.amount += amount
-
-    def can_merge(self, debt):
-        return self.creditor == debt.creditor and self.debtor == debt.debtor
+    def to_dict(self):
+        return { 'debtor':self.debtor, 'creditor':self.creditor, 'amount':self.amount, 'comment':self.comment }
 
     def __repr__(self):
         return '{0} ({1})> {2}'.format(self.debtor, self.amount, self.creditor)
+
+class Person:
+
+    def __init__(self, name):
+        self.name = name
+        self.balance = self._tmp_balance = 0
+        self.own_share = 0
+        self.transfers = []
+
+    def to_dict(self):
+        return { 'name':self.name, 'balance':self.balance, 'own_share':self.own_share,
+                 'transfers': self.transfers }
+
+    def __repr__(self):
+        return u'<Person (name={0}, balance={1})'.format(self.name, self.balance)
 
 class Ledger:
 
@@ -55,186 +51,118 @@ class Ledger:
         else:
             self.data = load(obj)
         self.reduced = False
-        self.effective_debts = {}
+        self.people = {}
         for p in self.data:
             if p['amount'] > 0:
                 payment = Payment(p)
-                creditor = payment.creditor
-                creditor_debts = self.effective_debts.get(creditor) or {}
+                creditor_name = payment.creditor
+                creditor = self._get_insert_person(creditor_name)
+                logger.debug('creditor: '+str(creditor.to_dict()))
+                creditor.balance += payment.amount
             else:
                 continue
-            for d in payment.make_debts().values():
-                logger.debug('processing '+str(d))
-                debtor = d.debtor
-                debt = ((self.effective_debts.get(debtor)
-                            and self.effective_debts[debtor].get(creditor))
-                            or Debt(debtor, creditor))
-                credit = creditor_debts.get(debtor)
-                if credit:
-                    logger.debug('credit: '+str(credit))
-                    if credit.amount > d.amount:
-                        credit.add(-d.amount)
-                    else:
-                        if credit.amount < d.amount:
-                            debt.add(d.amount-credit.amount)
-                        creditor_debts.pop(debtor)
-                    logger.debug('new debt: '+str(debt))
-                else:
-                    debt.add(d.amount)
-                if debt.amount > 0:
-                    if not self.effective_debts.get(debtor):
-                        self.effective_debts[debtor] = {}
-                    self.effective_debts[debtor][creditor] = debt
-            if len(creditor_debts) == 0:
-                try: self.effective_debts.pop(creditor)
-                except: pass
-            else:
-                self.effective_debts[creditor] = creditor_debts
+            for d in payment.debtors:
+                debtor = self._get_insert_person(d)
+                logger.debug('debtor: '+str(debtor.to_dict()))
+                debtor.balance -= payment.share
+
+        self._transfers_done = False
+        self._generate_transfers()
+
 
     def summary(self):
-        string = 'Debts '
-        if self.reduced:
-            string += '(reduced)\n'
-        else:
-            string += '(unreduced)\n'
-        for c in self.effective_debts.values():
-            for d in c.values():
-                string += '{0} owes {1:.2f} to {2}\n'.format(d.debtor, d.amount, d.creditor)
+        string = 'Debts:\n'
+        for person in self.people:
+            if person.balance > 0:
+                string += '{0} is owed {1:.2f}\n'.format(person.name, person.balance)
+            elif person.balance <= 0:
+                string += '{0} owes {1:.2f}:\n'.format(person.name, -person.balance)
+                for t in person.transfers:
+                    string += '    {0:.2f} to {1}:\n'.format(t['amount'], t['to'])
         return string
 
-    def _debts_list(self):
-        debts_list = []
-        for v in self.effective_debts.values():
-            debts_list.extend(list(map(lambda i:i.__dict__, v.values())))
-        return debts_list
+    def json(self):
+        return dumps(self.to_list(), indent=True)
 
-    def json_debts(self):
-        return dumps(self._debts_list(), indent=True)
+    def to_list(self):
+        list_repr = [ person.to_dict() for person in self.people ]
+        return list_repr
 
-    def reduce(self):
-        cycles = self._find_cycles()
-        while cycles:
-            # probably a bit dumb to recompute everything
-            min_cycles_debts = self._min_cycles_debts(cycles)
-            min_index = 0
-            min_c_count = len(min_cycles_debts[min_index][1])
-            for (i, (debt, member_cycles)) in enumerate(min_cycles_debts):
-                l = len(member_cycles)
-                if l == 1:
-                    min_index = i
-                    break
-                if l < min_c_count:
-                    min_index = i
-                    min_c_count = l
-            logger.debug('removing cycle '+str(cycles[min_index]))
-            cycles = self._remove_cycle(cycles, min_index, min_cycles_debts)
-            logger.debug('new cycles: '+str(cycles))
-        self.reduced = True
+    def _get_insert_person(self, person_name):
+        p = self.people.get(person_name)
+        if not p:
+            p = Person(person_name)
+            self.people[person_name] = p
+        return p
 
-    def _find_cycles(self, history=[]):
-        logger.debug(history)
-        if history == []:
-            cycles = []
-            for debtor in self.effective_debts:
-                new_cycles = self._find_cycles(history=[debtor])
-                if len(new_cycles) > 0:
-                    cycles = self._merge_cycles(cycles, new_cycles)
-            return cycles
-        else:
-            index = history.index(history[-1])
-            if index < len(history)-1:
-                logger.debug('cycle found')
-                return [history[index:-1]]
-            creditors = self.effective_debts.get(history[-1])
-            cycles = []
-            for debt in creditors or []:
-                new_history = list(history)
-                new_history.append(debt)
-                new_cycles = self._find_cycles(history=new_history)
-                if len(new_cycles) > 0:
-                    cycles = self._merge_cycles(cycles, new_cycles)
-            return cycles
+    def _generate_transfers(self):
 
-    def _merge_cycles(self, cycles_1, cycles_2):
-        logger.debug('merging '+str(cycles_1)+' and '+str(cycles_2))
-        new_cycles = list(cycles_1)
-        for c2 in cycles_2:
-            if not any(map(lambda x:self._cycles_equal(x, c2), cycles_1)):
-                new_cycles.append(c2)
-        logger.debug('result: '+str(new_cycles))
-        return new_cycles
+        if self._transfers_done:
+            logger.error('Transfers have already been computed.\n')
+            return
 
-    def _cycles_equal(self, c1, c2):
-        logger.debug('comparing '+str(c1)+' and '+str(c2))
-        if len(c1) != len(c2): return False
-        try:
-            i0 = c2.index(c1[0])
-        except:
-            logger.debug('cycles are different')
-            return False
-        i = 1
-        offset = i0
-        while i < len(c1):
-            if i+offset == len(c2):
-                offset = -i
-            if c1[i] != c2[i+offset]:
-                logger.debug('cycles are different')
-                return False
-            i += 1
-        logger.debug('cycles are equal')
-        return True
+        self.people = sorted(self.people.values(), key=lambda p:p.balance)
+        l = list(self.people)
 
-    def _min_cycles_debts(self, cycles):
-        min_debts = []
-        for cycle in cycles:
-            logger.debug('min debt for '+str(cycle))
-            min_debt = None
-            for i in range(len(cycle)):
-                if i == len(cycle) - 1:
-                    debt = self.effective_debts[cycle[i]][cycle[0]]
+
+        for p in l:
+            p._tmp_balance = p.balance
+
+        done = len(l) <= 1
+
+        # Look for perfect matches first
+        if not done:
+            i_start = 0
+            i_end = len(l) - 1
+            exclude = []
+
+            while i_start < i_end:
+                cur_debtor   = l[i_start]
+                cur_creditor = l[i_end]
+
+                if abs(cur_debtor._tmp_balance + cur_creditor._tmp_balance) < 1e-14:
+                    cur_debtor.transfers.append({'to':cur_creditor.name,
+                                                 'amount':cur_creditor._tmp_balance})
+                    cur_debtor._tmp_balance = cur_creditor._tmp_balance = 0
+                    exclude.append(cur_debtor)
+                    exclude.append(cur_creditor)
+                    i_start += 1
+                    i_end -= 1
+
+                elif -cur_debtor._tmp_balance > cur_creditor._tmp_balance:
+                    i_start += 1
                 else:
-                    debt = self.effective_debts[cycle[i]][cycle[i+1]]
-                if i == 0:
-                    min_debt = debt
-                else:
-                    if debt.amount < min_debt.amount:
-                        min_debt = debt
-            containing_cycles = []
-            for c in cycles:
-                if self._debt_in_cycle(min_debt, c):
-                    containing_cycles.append(c)
-            min_debts.append((min_debt, containing_cycles))
-        logger.debug('got '+str(min_debts))
-        return min_debts
+                    i_end -= 1
 
-    def _debt_in_cycle(self, debt, cycle):
-        (debtor, creditor) = (debt.debtor, debt.creditor)
-        if cycle[-1] == debtor and cycle[0] == creditor:
-            return True
-        for i in range(len(cycle)-1):
-            if cycle[i] == debtor and cycle[i+1] == creditor:
-                return True
-        return False
+            l = list(filter(lambda p:p not in exclude, l))
 
-    def _remove_cycle(self, cycles, i, min_cycles_debts):
-        cycle = cycles[i]
-        min_debt = min_cycles_debts[i][0]
-        min_debt_amount = min_debt.amount
-        for i in range(len(cycle)):
-            if i == len(cycle) - 1:
-                debt = self.effective_debts[cycle[i]][cycle[0]]
+        done = len(l) <= 1
+
+        while not done:
+
+            start = l[0]
+            end   = l[-1]
+
+            if start == end:
+                if abs(start._tmp_balance) > 1e-14:
+                    logger.warn('Balancing error: {}'.format(start._tmp_balance))
+                break
+
+            if abs(start._tmp_balance + end._tmp_balance) < 1e-14:
+                start.transfers.append({'to':end.name, 'amount':end._tmp_balance})
+                start._tmp_balance = end._tmp_balance = 0
+                l = l[1:-1]
+            elif -start._tmp_balance > end._tmp_balance:
+                start.transfers.append({'to':end.name, 'amount':end._tmp_balance})
+                start._tmp_balance += end._tmp_balance
+                end._tmp_balance = 0
+                l = l[:-1]
             else:
-                debt = self.effective_debts[cycle[i]][cycle[i+1]]
-            assert(debt.amount >= min_debt.amount)
-            logger.debug('reducing debt '+str(debt))
-            debt.add(-min_debt_amount)
-            if debt.amount == 0:
-                self.effective_debts[debt.debtor].pop(debt.creditor)
-                for (d, cs) in min_cycles_debts:
-                    if debt == d:
-                        for c in cs:
-                            try:
-                                cycles.remove(c)
-                            except:
-                                pass
-        return cycles
+                start.transfers.append({'to':end.name, 'amount':-start._tmp_balance})
+                end._tmp_balance += start._tmp_balance
+                start._tmp_balance = 0
+                l = l[1:]
+
+            done = len(l) == 0
+
+        self._transfers_done = True

@@ -1,23 +1,114 @@
 #!/usr/bin/env python
 import os
-from flask import Flask, render_template, url_for, abort, request
+from flask import Flask, render_template, url_for, abort, request, redirect
 from simplejson import loads
+from pymongo import MongoClient
+from string import ascii_uppercase, digits
+from random import choice
+from datetime import datetime
+from functools import wraps
 
 from libfindus.ledger import Ledger
 
+client = MongoClient(os.environ['OPENSHIFT_MONGODB_DB_URL'])
+db = client['findus'].payments
+
 app = Flask(__name__)
-app.debug = True
+app.config.from_pyfile(os.environ['FINDUS_CONFIG_FILE'])
+
+if not app.debug:
+    import logging
+    from logging.handlers import RotatingFileHandler
+    file_handler = RotatingFileHandler(app.config['LOG_FILE'], maxBytes=1024*1024, backupCount=5)
+    file_handler.setLevel(logging.WARNING)
+    app.logger.addHandler(file_handler)
+
+"""
+decorators
+"""
+
+def admin_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if request.args.get('ADMIN_KEY') != app.config['ADMIN_KEY']:
+            return abort(401)
+        return f(*args, **kwargs)
+    return decorated_function
+
+"""
+views
+"""
 
 @app.route('/')
 def index():
     return render_template('index.html')
 
+@app.route('/admin')
+@admin_required
+def admin():
+    ledgers = db.find()
+    return render_template('admin.html', ledgers=ledgers)
+
+@app.route('/<id>')
+def viewledger(id):
+    p = db.find_one({'id':id})
+    if not p: abort(404)
+    ledger = Ledger(p['p'])
+    list_ledger = ledger.to_list()
+    result = render_template('result.html', ledger=list_ledger)
+    return render_template('index.html', id=id, payments=p['p'], result=result, ledger=list_ledger)
+
+@app.route('/<id>/save', methods=['POST'])
+def save(id):
+    p = db.find_one({'id':id})
+    if not p: abort(404)
+    try:
+        payments = request.form['p']
+        ledger = Ledger(payments)
+        p['p'] = payments
+        db.save(p)
+        return 'OK'
+    except:
+        abort(400)
+
+@app.route('/<id>/delete', methods=['POST'])
+def delete(id):
+    p = db.find_one({'id':id})
+    if not p: return '', 404
+    db.remove(p)
+    return url_for('index')
+
+@app.route('/create', methods=['POST'])
+def create():
+    try:
+        payments = request.form['p']
+        ledger = Ledger(payments)
+        now = datetime.utcnow()
+        tries = 0
+        id = id_generator()
+        while db.find_one({'id':id}) and tries < 1000:
+            id = id_generator()
+            tries += 1
+        if tries == 1000: return '', 500
+        now = datetime.utcnow()
+        db.insert({'id':id, 'updated':now, 'p':payments})
+        return url_for('viewledger', id=id)
+    except:
+        return '', 400
+
 @app.route('/reduce', methods=['GET', 'POST'])
 def reduce():
     payments = request.form['p']
     ledger = Ledger(payments)
-    ledger.reduce()
-    return ledger.summary().replace('\n', '<br>')
+    return render_template('result.html', ledger=ledger.to_list())
+
+@app.template_filter('round')
+def round(f):
+    return '{0:.2f}'.format(f)
+
+def id_generator(size=4, chars=ascii_uppercase + digits):
+    """Ascii token generator"""
+    return ''.join(choice(chars) for x in range(size))
 
 if __name__ == '__main__':
     app.run()

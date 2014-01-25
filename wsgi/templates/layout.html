@@ -2,16 +2,20 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>index - findus-web</title>
+    <title>findus-web</title>
     <script src="//ajax.googleapis.com/ajax/libs/jquery/1.10.2/jquery.min.js"></script>
     <script src="{{ url_for('static', filename='js/main.js') }}"></script>
     <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='css/style.css') }}">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 </head>
 <body>
 <div id="main">
-    <h1>findus-web</h1>
+    <div class="center">{% block title %}findus-web{% endblock %}</div>
 {% block main %}
 {% endblock %}
 </div>
+<footer>
+    <hr>
+    Github: <a href="https://github.com/gapato/findus">findus</a> | <a href="https://github.com/gapato/findus-web">findus-web</a>
 </body>
 </html>

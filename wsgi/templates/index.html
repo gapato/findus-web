@@ -1,36 +1,50 @@
 {% extends "layout.html" %}
 
+{% if id %}
+{% block title %}
+Current ledger: <a href="{{ url_for('viewledger', id=id) }}">{{id}}</a>
+{% endblock %}
+{% endif %}
+
 {% block main %}
 <form id="form" action="javascript:commit()">
-    <label for="creditor">
-        <input id="creditor" name="creditor" type="text" placeholder="creditor" required>
-    </label>
-    <label for="amount">
-        <input id="amount" name="amount" type="number" min="0" max="999999999" step="0.01" placeholder="amount" required>
-    </label>
-    <label for="debtors">
-        <input id="debtors" name="debtors" type="text" placeholder="debtors (comma separated)" required>
-    </label>
-    <label for="comment">
-        <input id="comment" name="comment" type="text" placeholder="comment">
-    </label>
-    <input type="submit" value="Add">
+    <input id="creditor" name="creditor" type="text" placeholder="creditor" list="autonames" required>
+    <input id="amount" name="amount" type="number" min="0" max="999999999" step="0.01" placeholder="amount" autocomplete="off" required>
+    <input id="debtors" name="debtors" type="text" placeholder="debtors (comma separated)" list="autonames" required>
+    <input id="comment" name="comment" type="text" placeholder="comment">
+    <input class="green" id="add" type="submit" value="Add">
+    <datalist id="autonames">
+    {% if ledger -%}
+    {% for p in ledger -%}
+    <option value="{{p.name}}">
+    {% endfor -%}
+    {% endif -%}
+    </datalist>
 </form>
 
-<div id="payments" class="table">
-    <span class="thead row">
-        <span class="cell">Creditor</span>
-        <span class="cell">Amount</span>
-        <span class="cell">Debtors</span>
-        <span class="cell">Comment</span>
-        <span class="cell"></span>
-    </span>
+<div id="payments">
 </div>
 
-<input type="button" value="Reduce" onclick="reduce()">
-<input type="button" value="Toggle JSON" onclick="$('#json').toggle()">
+<input id="reduce" class="green" type="button" value="Reduce" onclick="reduce()">
+{% if id %}
+<input id="save" class="green" type="button" value="Save to server" onclick="findus_save('{{id}}')">
+<input id="delete" class="red" type="button" value="Delete ledger" onclick="findus_delete('{{id}}')">
+{% else %}
+<input id="create" class="green" type="button" value="Save to server" onclick="findus_create()">
+{% endif %}
+<input id="togglejson" class="blue" type="button" value="Toggle JSON" onclick="$('#json').toggle()">
 
-<div id="json"></div>
-<div id="result"></div>
+<div id="json">
+{% if payments %}
+{{payments|safe}}
+{% endif %}
+</div>
+<div id="result">{{result|safe}}</div>
+
+{% if payments %}
+<script>
+var saved_payments = {{payments|safe}};
+</script>
+{% endif %}
 
 {% endblock %}

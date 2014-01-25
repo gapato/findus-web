@@ -1,0 +1,2 @@
+ADMIN_KEY = 'ADMIN KEY'
+
